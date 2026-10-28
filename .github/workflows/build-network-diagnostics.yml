@@ -1,0 +1,38 @@
+name: Build SambaFix - Network Diagnostics
+
+on:
+  push:
+    branches:
+      - fix/network-diagnostics
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-network-diagnostics:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout rama de diagnóstico
+        uses: actions/checkout@v4
+
+      - name: Compilar dylib de diagnóstico (iOS arm64)
+        run: |
+          set -euo pipefail
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          clang -arch arm64 \
+            -isysroot "$SDK" \
+            -miphoneos-version-min=14.0 \
+            -dynamiclib -fobjc-arc -fblocks -Wno-deprecated-declarations \
+            -framework Foundation -framework CloudKit -framework UIKit \
+            -install_name @rpath/SambaFix.dylib \
+            -o SambaFix.dylib SambaFix.m SambaFixNet.m
+          codesign -f -s - SambaFix.dylib
+          file SambaFix.dylib
+
+      - name: Subir artefacto separado
+        uses: actions/upload-artifact@v4
+        with:
+          name: SambaFix-Network-Diagnostics
+          path: SambaFix.dylib
+          if-no-files-found: error
