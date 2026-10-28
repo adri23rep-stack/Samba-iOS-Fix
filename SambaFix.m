@@ -31,39 +31,33 @@ static void SFComplete(CKDatabaseOperation *op) {
                 if (o.perRecordDeleteBlock) o.perRecordDeleteBlock(i, nil);
             if (o.modifyRecordsCompletionBlock)
                 o.modifyRecordsCompletionBlock(o.recordsToSave, o.recordIDsToDelete, nil);
-            if (o.modifyRecordsResultBlock) o.modifyRecordsResultBlock(nil);
         });
     } else if ([op isKindOfClass:[CKFetchRecordsOperation class]]) {
         CKFetchRecordsOperation *o = (CKFetchRecordsOperation *)op;
         SFMain(^{
             if (o.fetchRecordsCompletionBlock) o.fetchRecordsCompletionBlock(@{}, nil);
-            if (o.fetchRecordsResultBlock) o.fetchRecordsResultBlock(nil);
         });
     } else if ([op isKindOfClass:[CKQueryOperation class]]) {
         CKQueryOperation *o = (CKQueryOperation *)op;
         SFMain(^{
             if (o.queryCompletionBlock) o.queryCompletionBlock(nil, nil);
-            if (o.queryResultBlock) o.queryResultBlock(nil, nil);
         });
     } else if ([op isKindOfClass:[CKFetchRecordZonesOperation class]]) {
         CKFetchRecordZonesOperation *o = (CKFetchRecordZonesOperation *)op;
         SFMain(^{
             if (o.fetchRecordZonesCompletionBlock) o.fetchRecordZonesCompletionBlock(@{}, nil);
-            if (o.fetchRecordZonesResultBlock) o.fetchRecordZonesResultBlock(nil);
         });
     } else if ([op isKindOfClass:[CKModifyRecordZonesOperation class]]) {
         CKModifyRecordZonesOperation *o = (CKModifyRecordZonesOperation *)op;
         SFMain(^{
             if (o.modifyRecordZonesCompletionBlock)
                 o.modifyRecordZonesCompletionBlock(o.recordZonesToSave, o.recordZoneIDsToDelete, nil);
-            if (o.modifyRecordZonesResultBlock) o.modifyRecordZonesResultBlock(nil);
         });
     } else if ([op isKindOfClass:[CKModifySubscriptionsOperation class]]) {
         CKModifySubscriptionsOperation *o = (CKModifySubscriptionsOperation *)op;
         SFMain(^{
             if (o.modifySubscriptionsCompletionBlock)
                 o.modifySubscriptionsCompletionBlock(o.subscriptionsToSave, o.subscriptionIDsToDelete, nil);
-            if (o.modifySubscriptionsResultBlock) o.modifySubscriptionsResultBlock(nil);
         });
     } else {
         NSLog(@"[SambaFix] tipo de operacion sin manejar: %@", NSStringFromClass([op class]));
