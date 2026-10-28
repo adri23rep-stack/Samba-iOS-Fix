@@ -15,11 +15,11 @@ jobs:
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
           clang -arch arm64 \
             -isysroot "$SDK" \
-            -miphoneos-version-min=14.0 \
+            -miphoneos-version-min=15.0 \
             -dynamiclib -fobjc-arc -Wno-deprecated-declarations \
-            -framework Foundation -framework CloudKit \
+            -framework Foundation -framework CloudKit -framework UIKit \
             -install_name @rpath/SambaFix.dylib \
-            -o SambaFix.dylib SambaFix.m
+            -o SambaFix.dylib SambaFix.m SambaFixNet.m
           codesign -f -s - SambaFix.dylib
           file SambaFix.dylib
 
