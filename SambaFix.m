@@ -1,22 +1,73 @@
-// SambaFix.m  (v2)
-// Samba de Amigo + LiveContainer: evita el crasheo y la pantalla negra causados por CloudKit.
+// SambaFix.m  (v3)
+// Samba de Amigo + LiveContainer: CloudKit falso que "funciona" pero sin datos.
 //
-// v1 devolvia nil en +[CKContainer defaultContainer]. El juego pasaba el crash pero se
-// quedaba esperando, porque CloudKitWrapper pide el estado de la cuenta de iCloud
-// (CKContainer_GetAccountStatus) y con nil nunca llega la respuesta.
-//
-// v2 devuelve un contenedor FALSO que responde "no hay cuenta de iCloud" de inmediato, y
-// una base de datos falsa que responde "no autenticado". Asi el juego sigue sin iCloud.
+// v1: devolvia nil            -> el juego se quedaba esperando (pantalla negra).
+// v2: iCloud falso con error  -> el juego arrancaba pero mostraba el aviso
+//                                "No se ha podido obtener datos de la nube".
+// v3: iCloud falso "disponible": la cuenta existe y toda operacion termina bien,
+//                                con resultados vacios. Sin errores = sin aviso.
 
 #import <Foundation/Foundation.h>
 #import <CloudKit/CloudKit.h>
 #import <objc/runtime.h>
 #import <dlfcn.h>
 
-static NSError *SFError(void) {
-    return [NSError errorWithDomain:CKErrorDomain
-                               code:CKErrorNotAuthenticated
-                           userInfo:@{NSLocalizedDescriptionKey: @"iCloud no disponible (SambaFix)"}];
+// Si el juego se comporta raro, prueba CKAccountStatusNoAccount (como la v2)
+#define SF_ACCOUNT_STATUS CKAccountStatusAvailable
+
+static void SFMain(dispatch_block_t b) { dispatch_async(dispatch_get_main_queue(), b); }
+
+#pragma mark - Completa cualquier operacion de base de datos "con exito" y sin datos
+
+static void SFComplete(CKDatabaseOperation *op) {
+    NSLog(@"[SambaFix] operacion %@ -> exito vacio", NSStringFromClass([op class]));
+
+    if ([op isKindOfClass:[CKModifyRecordsOperation class]]) {
+        CKModifyRecordsOperation *o = (CKModifyRecordsOperation *)op;
+        SFMain(^{
+            for (CKRecord *r in o.recordsToSave ?: @[])
+                if (o.perRecordSaveBlock) o.perRecordSaveBlock(r.recordID, r, nil);
+            for (CKRecordID *i in o.recordIDsToDelete ?: @[])
+                if (o.perRecordDeleteBlock) o.perRecordDeleteBlock(i, nil);
+            if (o.modifyRecordsCompletionBlock)
+                o.modifyRecordsCompletionBlock(o.recordsToSave, o.recordIDsToDelete, nil);
+            if (o.modifyRecordsResultBlock) o.modifyRecordsResultBlock(nil);
+        });
+    } else if ([op isKindOfClass:[CKFetchRecordsOperation class]]) {
+        CKFetchRecordsOperation *o = (CKFetchRecordsOperation *)op;
+        SFMain(^{
+            if (o.fetchRecordsCompletionBlock) o.fetchRecordsCompletionBlock(@{}, nil);
+            if (o.fetchRecordsResultBlock) o.fetchRecordsResultBlock(nil);
+        });
+    } else if ([op isKindOfClass:[CKQueryOperation class]]) {
+        CKQueryOperation *o = (CKQueryOperation *)op;
+        SFMain(^{
+            if (o.queryCompletionBlock) o.queryCompletionBlock(nil, nil);
+            if (o.queryResultBlock) o.queryResultBlock(nil, nil);
+        });
+    } else if ([op isKindOfClass:[CKFetchRecordZonesOperation class]]) {
+        CKFetchRecordZonesOperation *o = (CKFetchRecordZonesOperation *)op;
+        SFMain(^{
+            if (o.fetchRecordZonesCompletionBlock) o.fetchRecordZonesCompletionBlock(@{}, nil);
+            if (o.fetchRecordZonesResultBlock) o.fetchRecordZonesResultBlock(nil);
+        });
+    } else if ([op isKindOfClass:[CKModifyRecordZonesOperation class]]) {
+        CKModifyRecordZonesOperation *o = (CKModifyRecordZonesOperation *)op;
+        SFMain(^{
+            if (o.modifyRecordZonesCompletionBlock)
+                o.modifyRecordZonesCompletionBlock(o.recordZonesToSave, o.recordZoneIDsToDelete, nil);
+            if (o.modifyRecordZonesResultBlock) o.modifyRecordZonesResultBlock(nil);
+        });
+    } else if ([op isKindOfClass:[CKModifySubscriptionsOperation class]]) {
+        CKModifySubscriptionsOperation *o = (CKModifySubscriptionsOperation *)op;
+        SFMain(^{
+            if (o.modifySubscriptionsCompletionBlock)
+                o.modifySubscriptionsCompletionBlock(o.subscriptionsToSave, o.subscriptionIDsToDelete, nil);
+            if (o.modifySubscriptionsResultBlock) o.modifySubscriptionsResultBlock(nil);
+        });
+    } else {
+        NSLog(@"[SambaFix] tipo de operacion sin manejar: %@", NSStringFromClass([op class]));
+    }
 }
 
 #pragma mark - Base de datos falsa
@@ -27,25 +78,26 @@ static NSError *SFError(void) {
 @implementation SFDatabase
 
 - (void)addOperation:(CKDatabaseOperation *)operation {
-    NSLog(@"[SambaFix] addOperation ignorada: %@", NSStringFromClass([operation class]));
+    SFComplete(operation);
 }
 
 - (void)fetchRecordWithID:(CKRecordID *)recordID
-        completionHandler:(void (^)(CKRecord *, NSError *))completionHandler {
-    NSLog(@"[SambaFix] fetchRecordWithID -> error");
-    if (completionHandler) completionHandler(nil, SFError());
+        completionHandler:(void (^)(CKRecord *, NSError *))handler {
+    NSLog(@"[SambaFix] fetchRecordWithID -> no existe");
+    NSError *e = [NSError errorWithDomain:CKErrorDomain code:CKErrorUnknownItem userInfo:nil];
+    if (handler) SFMain(^{ handler(nil, e); });
 }
 
 - (void)saveRecord:(CKRecord *)record
- completionHandler:(void (^)(CKRecord *, NSError *))completionHandler {
-    NSLog(@"[SambaFix] saveRecord -> error");
-    if (completionHandler) completionHandler(nil, SFError());
+ completionHandler:(void (^)(CKRecord *, NSError *))handler {
+    NSLog(@"[SambaFix] saveRecord -> exito");
+    if (handler) SFMain(^{ handler(record, nil); });
 }
 
 - (void)deleteRecordWithID:(CKRecordID *)recordID
-         completionHandler:(void (^)(CKRecordID *, NSError *))completionHandler {
-    NSLog(@"[SambaFix] deleteRecordWithID -> error");
-    if (completionHandler) completionHandler(nil, SFError());
+         completionHandler:(void (^)(CKRecordID *, NSError *))handler {
+    NSLog(@"[SambaFix] deleteRecordWithID -> exito");
+    if (handler) SFMain(^{ handler(recordID, nil); });
 }
 
 @end
@@ -61,11 +113,8 @@ static CKContainer *gContainer = nil;
 @implementation SFContainer
 
 - (void)accountStatusWithCompletionHandler:(void (^)(CKAccountStatus, NSError *))handler {
-    NSLog(@"[SambaFix] accountStatus -> NoAccount");
-    if (!handler) return;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        handler(CKAccountStatusNoAccount, nil);
-    });
+    NSLog(@"[SambaFix] accountStatus -> %ld", (long)SF_ACCOUNT_STATUS);
+    if (handler) SFMain(^{ handler(SF_ACCOUNT_STATUS, nil); });
 }
 
 - (CKDatabase *)privateCloudDatabase { return gDB; }
@@ -107,12 +156,11 @@ static void SambaFix_init(void) {
         return;
     }
 
-    // Instancias creadas sin init (el init de CloudKit no esta disponible ni hace falta)
     gDB = class_createInstance([SFDatabase class], 0);
     gContainer = class_createInstance([SFContainer class], 0);
 
     hookClassMethod(cls, @selector(defaultContainer), (IMP)fix_defaultContainer);
     hookClassMethod(cls, @selector(containerWithIdentifier:), (IMP)fix_containerWithIdentifier);
 
-    NSLog(@"[SambaFix] v2 cargado");
+    NSLog(@"[SambaFix] v3 cargado");
 }
