@@ -1,0 +1,30 @@
+name: Build SambaFix
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compilar dylib (iOS arm64)
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          clang -arch arm64 \
+            -isysroot "$SDK" \
+            -miphoneos-version-min=14.0 \
+            -dynamiclib -fobjc-arc \
+            -framework Foundation -framework CloudKit \
+            -install_name @rpath/SambaFix.dylib \
+            -o SambaFix.dylib SambaFix.m
+          codesign -f -s - SambaFix.dylib
+          file SambaFix.dylib
+
+      - name: Subir artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: SambaFix
+          path: SambaFix.dylib
