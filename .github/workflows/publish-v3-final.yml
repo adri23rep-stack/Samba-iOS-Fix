@@ -1,0 +1,70 @@
+name: Publish SambaFix v3 Final
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-v3-final.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sambafix-v3-final-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build SambaFix v3 (iOS arm64)
+        run: |
+          set -euo pipefail
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          clang -arch arm64 \
+            -isysroot "$SDK" \
+            -miphoneos-version-min=15.0 \
+            -dynamiclib -fobjc-arc -Wno-deprecated-declarations \
+            -framework Foundation -framework CloudKit -framework UIKit \
+            -install_name @rpath/SambaFix.dylib \
+            -o SambaFix.dylib SambaFix.m SambaFixNet.m
+          codesign -f -s - SambaFix.dylib
+          file SambaFix.dylib
+          ditto -c -k --keepParent SambaFix.dylib SambaFix-v3.0.0.zip
+
+      - name: Write release notes
+        run: |
+          cat > RELEASE_NOTES.md <<'EOF'
+          # SambaFix v3.0.0 — Final
+
+          Final iOS 15+ build for **Samba de Amigo** in **LiveContainer**, without TrollStore or jailbreak.
+
+          - Fixes the CloudKit startup crash and black screen.
+          - Replaces CloudKit calls with successful empty responses to avoid cloud-related warning dialogs.
+          - Allows normal online connectivity and Game Center functionality (as reported in testing).
+          - Includes optional network logging with its visual overlay disabled.
+          - Tested on iOS 27.0 (24A437) and LiveContainer 3.8.10.
+
+          **Download:** `SambaFix.dylib` and enable it under LiveContainer's **Tweaks** for the game. The ZIP contains the same dylib.
+
+          **Important:** The game IPA is not included. Use your own legally obtained copy. iCloud cloud saves are unavailable; progress stays on your device.
+          EOF
+
+      - name: Publish final release and assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v3.0.0 >/dev/null 2>&1; then
+            gh release upload v3.0.0 SambaFix.dylib SambaFix-v3.0.0.zip --clobber
+            gh release edit v3.0.0 --title 'SambaFix v3.0.0 - Final' --notes-file RELEASE_NOTES.md --draft=false --prerelease=false --latest
+          else
+            gh release create v3.0.0 SambaFix.dylib SambaFix-v3.0.0.zip \
+              --title 'SambaFix v3.0.0 - Final' \
+              --notes-file RELEASE_NOTES.md \
+              --target "$GITHUB_SHA" \
+              --latest
+          fi
